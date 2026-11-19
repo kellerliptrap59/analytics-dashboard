@@ -1,46 +1,36 @@
+
 import pandas as pd
 import streamlit as st
 import sqlite3
-import subprocess
-import sys
 import altair as alt
 
-# ---- Page setup (visual) ----
-st.set_page_config(page_title="NBA Analytics Dashboard", page_icon="🏀", layout="wide")
+# ---- Page setup ----
+st.set_page_config(
+    page_title="NBA Analytics Dashboard",
+    page_icon="🏀",
+    layout="wide"
+)
 
 st.title("🏀 NBA Analytics Dashboard")
 st.caption("See how often a player has cleared a stat line over their recent games.")
 
-# Automatically update NBA data once per session
-if "data_updated" not in st.session_state:
-    with st.spinner("Updating NBA game data..."):
-        try:
-            subprocess.run(
-                [sys.executable, "data/stats.py"],
-                check=True,
-                capture_output=True,
-                text=True, 
-                timeout=120
-            )
-            st.toast("NBA data successfully updated!", icon="✅")
-
-        except subprocess.TimeoutExpired:
-            st.warning("The NBA data update timed out. Showing the last saved data.")
-
-        except subprocess.CalledProcessError as e:
-            st.warning("Unable to update NBA data. Showing the last saved data.")
-            with st.expander("Error details"):
-                st.code(e.stderr)
-
-    st.session_state.data_updated = True
+# ---- Load NBA data ----
 
 # Connect to database
 conn = sqlite3.connect("data/nba.db")
 
+# Load latest player game logs
 df = pd.read_csv("data/nba_player_boxscores_2026-27.csv")
 
-df.to_sql("player_game_logs", conn, if_exists="replace", index=False)
+# Update SQLite database with latest CSV data
+df.to_sql(
+    "player_game_logs",
+    conn,
+    if_exists="replace",
+    index=False
+)
 
+# ---- Available statistics ----
 stat_options = {
     "3-Pointers Made": "FG3M",
     "Offensive Rebounds": "OREB",
@@ -56,7 +46,7 @@ stat_options = {
 
 left_col, right_col = st.columns([1, 2], gap="large")
 
-# LEFT COLUMN:
+# ---- LEFT COLUMN ----
 with left_col:
     with st.container(border=True):
         st.subheader("Player & Prop Selection")
@@ -84,21 +74,25 @@ with left_col:
             step=0.5
         )
 
-        games_available = int((df["PLAYER_NAME"] == selected_player).sum())
+        games_available = int(
+            (df["PLAYER_NAME"] == selected_player).sum()
+        )
+
         max_games = max(games_available, 1)
 
         number_of_games = st.number_input(
-        f"Number of Games to Analyze (max {games_available})",
-        min_value=1,
-        max_value=max_games,
-        value=min(10, max_games),
-        step=1
-)
+            f"Number of Games to Analyze (max {games_available})",
+            min_value=1,
+            max_value=max_games,
+            value=min(10, max_games),
+            step=1
+        )
+
+# ---- SQL QUERY ----
 
 # Get SQL column name for selected statistic
 stat = stat_options[selected_stat]
 
-# SQL query
 query = f"""
 SELECT
     PLAYER_NAME,
@@ -128,6 +122,8 @@ results = pd.read_sql_query(
 
 conn.close()
 
+# ---- Calculate results ----
+
 if selected_side == "Over":
     hits = (results[stat] > betting_line).sum()
 else:
@@ -141,19 +137,29 @@ hit_rate = (
     else 0
 )
 
-# RIGHT COLUMN:
+# ---- RIGHT COLUMN ----
 with right_col:
     st.subheader(
         f"{selected_player}: {selected_side} {betting_line:g} {selected_stat}"
     )
 
     if total_games > 0:
+
         average = results[stat].mean()
 
+        # Metrics
         m1, m2, m3 = st.columns(3)
 
-        m1.metric(f"{selected_side} Rate", f"{hit_rate:.1f}%")
-        m2.metric("Record", f"{hits} of {total_games} games")
+        m1.metric(
+            f"{selected_side} Rate",
+            f"{hit_rate:.1f}%"
+        )
+
+        m2.metric(
+            "Record",
+            f"{hits} of {total_games} games"
+        )
+
         m3.metric(
             f"Average {selected_stat}",
             f"{average:.1f}",
@@ -161,43 +167,101 @@ with right_col:
             delta_color="normal" if selected_side == "Over" else "inverse"
         )
 
-        # Chart: green = hit, red = miss, dashed line = your stat line
+        # ---- Chart ----
         chart_df = results.copy()
 
         if selected_side == "Over":
-            chart_df["Result"] = (chart_df[stat] > betting_line).map({True: "Hit", False: "Miss"})
-        else:
-            chart_df["Result"] = (chart_df[stat] < betting_line).map({True: "Hit", False: "Miss"})
+            chart_df["Result"] = (
+                chart_df[stat] > betting_line
+            ).map({
+                True: "Hit",
+                False: "Miss"
+            })
 
-        chart_df = chart_df.iloc[::-1]  # oldest to newest, left to right
-        chart_df["Game"] = chart_df["GAME_DATE"].astype(str) + " " + chart_df["OPPONENT"].astype(str)
+        else:
+            chart_df["Result"] = (
+                chart_df[stat] < betting_line
+            ).map({
+                True: "Hit",
+                False: "Miss"
+            })
+
+        # Oldest to newest, left to right
+        chart_df = chart_df.iloc[::-1]
+
+        chart_df["Game"] = (
+            chart_df["GAME_DATE"].astype(str)
+            + " "
+            + chart_df["OPPONENT"].astype(str)
+        )
 
         bars = (
             alt.Chart(chart_df)
-            .mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3)
+            .mark_bar(
+                cornerRadiusTopLeft=3,
+                cornerRadiusTopRight=3
+            )
             .encode(
-                x=alt.X("Game:N", sort=chart_df["Game"].tolist(), title=None,
-                        axis=alt.Axis(labelAngle=-45)),
-                y=alt.Y(f"{stat}:Q", title=selected_stat),
+                x=alt.X(
+                    "Game:N",
+                    sort=chart_df["Game"].tolist(),
+                    title=None,
+                    axis=alt.Axis(labelAngle=-45)
+                ),
+                y=alt.Y(
+                    f"{stat}:Q",
+                    title=selected_stat
+                ),
                 color=alt.Color(
                     "Result:N",
-                    scale=alt.Scale(domain=["Hit", "Miss"], range=["#2E7D5B", "#C4503C"]),
-                    legend=alt.Legend(title=None, orient="top")
+                    scale=alt.Scale(
+                        domain=["Hit", "Miss"],
+                        range=["#2E7D5B", "#C4503C"]
+                    ),
+                    legend=alt.Legend(
+                        title=None,
+                        orient="top"
+                    )
                 ),
-                tooltip=["GAME_DATE", "OPPONENT", "LOCATION", stat, "Result"]
+                tooltip=[
+                    "GAME_DATE",
+                    "OPPONENT",
+                    "LOCATION",
+                    stat,
+                    "Result"
+                ]
             )
         )
 
+        # Betting line
         line = (
-            alt.Chart(pd.DataFrame({"line": [betting_line]}))
-            .mark_rule(strokeDash=[6, 4], color="gray", size=2)
-            .encode(y="line:Q")
+            alt.Chart(
+                pd.DataFrame({"line": [betting_line]})
+            )
+            .mark_rule(
+                strokeDash=[6, 4],
+                color="gray",
+                size=2
+            )
+            .encode(
+                y="line:Q"
+            )
         )
 
-        st.altair_chart((bars + line).properties(height=300), use_container_width=True)
+        st.altair_chart(
+            (bars + line).properties(height=300),
+            use_container_width=True
+        )
+
     else:
         st.info("No games found.")
 
+    # ---- Game Statistics ----
     st.subheader("Game Statistics")
-    st.dataframe(results, use_container_width=True, hide_index=True)
+
+    st.dataframe(
+        results,
+        use_container_width=True,
+        hide_index=True
+    )
 
