@@ -1,4 +1,5 @@
 
+
 import pandas as pd
 import streamlit as st
 import sqlite3
@@ -12,14 +13,11 @@ st.set_page_config(
 )
 
 st.title("🏀 NBA Analytics Dashboard")
-st.caption("See how often a player has cleared a stat line over their recent games.")
+st.caption("Analyze player performance and see how often they clear a selected stat line.")
 
 # ---- Load NBA data ----
-
-# Connect to database
 conn = sqlite3.connect("data/nba.db")
 
-# Load latest player game logs
 df = pd.read_csv("data/nba_player_boxscores_2026-27.csv")
 
 # Update SQLite database with latest CSV data
@@ -44,16 +42,22 @@ stat_options = {
     "Points": "PTS"
 }
 
+# ---- Layout ----
 left_col, right_col = st.columns([1, 2], gap="large")
 
 # ---- LEFT COLUMN ----
 with left_col:
     with st.container(border=True):
+
         st.subheader("Player & Prop Selection")
+
+        players = sorted(
+            df["PLAYER_NAME"].dropna().unique().tolist()
+        )
 
         selected_player = st.selectbox(
             "Select a Player",
-            pd.read_csv("data/nba_player.csv")["PLAYER_NAME"].tolist()
+            players
         )
 
         selected_stat = st.selectbox(
@@ -90,7 +94,6 @@ with left_col:
 
 # ---- SQL QUERY ----
 
-# Get SQL column name for selected statistic
 stat = stat_options[selected_stat]
 
 query = f"""
@@ -117,19 +120,19 @@ LIMIT ?
 results = pd.read_sql_query(
     query,
     conn,
-    params=(selected_player, number_of_games)
+    params=(selected_player, int(number_of_games))
 )
 
 conn.close()
 
 # ---- Calculate results ----
 
+total_games = len(results)
+
 if selected_side == "Over":
     hits = (results[stat] > betting_line).sum()
 else:
     hits = (results[stat] < betting_line).sum()
-
-total_games = len(results)
 
 hit_rate = (
     (hits / total_games) * 100
@@ -139,6 +142,7 @@ hit_rate = (
 
 # ---- RIGHT COLUMN ----
 with right_col:
+
     st.subheader(
         f"{selected_player}: {selected_side} {betting_line:g} {selected_stat}"
     )
@@ -147,7 +151,13 @@ with right_col:
 
         average = results[stat].mean()
 
-        # Metrics
+        st.subheader(
+            f"{selected_player} has averaged {average:.2f} "
+            f"{selected_stat.lower()} per game over their last "
+            f"{total_games} games."
+        )
+
+        # ---- Metrics ----
         m1, m2, m3 = st.columns(3)
 
         m1.metric(
@@ -233,7 +243,7 @@ with right_col:
             )
         )
 
-        # Betting line
+        # ---- Betting Line ----
         line = (
             alt.Chart(
                 pd.DataFrame({"line": [betting_line]})
@@ -254,7 +264,7 @@ with right_col:
         )
 
     else:
-        st.info("No games found.")
+        st.info("No games found for this player.")
 
     # ---- Game Statistics ----
     st.subheader("Game Statistics")
@@ -264,4 +274,3 @@ with right_col:
         use_container_width=True,
         hide_index=True
     )
-
