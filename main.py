@@ -19,7 +19,7 @@ if "data_updated" not in st.session_state:
                 [sys.executable, "data/stats.py"],
                 check=True,
                 capture_output=True,
-                text=True,
+                text=True, 
                 timeout=120
             )
             st.toast("NBA data successfully updated!", icon="✅")
