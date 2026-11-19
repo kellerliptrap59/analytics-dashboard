@@ -1,5 +1,3 @@
-import sys
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -16,33 +14,12 @@ st.set_page_config(
 st.title("🏀 NBA Analytics Dashboard")
 st.caption("Analyze player performance and see how often they clear a selected stat line.")
 
-# ---- Load NBA data (auto-updates when the app loads) ----
-sys.path.append(str(Path(__file__).resolve().parent / "data"))
-import stats
+# ---- Load NBA data ----
+conn = sqlite3.connect("data/nba.db")
 
+df = pd.read_csv("data/nba_player_boxscores_2026-27.csv")
 
-@st.cache_data(ttl=3 * 60 * 60, show_spinner="Checking for new NBA games...")
-def load_data():
-    try:
-        df = stats.update_data()
-        try:
-            stats.export_data(df)   # best effort; helps until the app restarts
-        except Exception as e:
-            print(f"Could not save files: {e}")
-    except Exception as e:
-        print(f"Update failed, using existing CSV: {e}")
-        df = stats.clean_data(pd.read_csv(stats.BOXSCORES_CSV))
-
-    # Keep dates as plain strings, like they were when read from the CSV
-    df["GAME_DATE"] = df["GAME_DATE"].dt.strftime("%Y-%m-%d")
-    return df
-
-
-df = load_data()
-
-st.caption(f"Data through {df['GAME_DATE'].max()}")
-
-conn = sqlite3.connect(":memory:")
+# Update SQLite database with latest CSV data
 df.to_sql(
     "player_game_logs",
     conn,
@@ -50,6 +27,7 @@ df.to_sql(
     index=False
 )
 
+# ---- Available statistics ----
 stat_options = {
     "3-Pointers Made": "FG3M",
     "Offensive Rebounds": "OREB",
@@ -63,6 +41,7 @@ stat_options = {
     "Points": "PTS"
 }
 
+# ---- Layout ----
 left_col, right_col = st.columns([1, 2], gap="large")
 
 # ---- LEFT COLUMN ----
@@ -145,6 +124,7 @@ results = pd.read_sql_query(
 
 conn.close()
 
+# ---- Calculate results ----
 
 total_games = len(results)
 
@@ -180,6 +160,7 @@ with right_col:
             f"{total_games} games."
         )
 
+        # ---- Metrics ----
         m1, m2, m3 = st.columns(3)
 
         m1.metric(
@@ -194,6 +175,12 @@ with right_col:
             delta_color="normal" if selected_side == "Over" else "inverse"
         )
 
+        # m2.metric(
+        #     "Record",
+        #     f"{overs} Overs / {unders} Unders"
+        # )
+
+        # ---- Chart ----
         chart_df = results.copy()
 
         chart_df["Result"] = (
@@ -203,6 +190,7 @@ with right_col:
             False: "Under"
         })
 
+        # Oldest to newest, left to right
         chart_df = chart_df.iloc[::-1]
 
         chart_df["Game"] = (
@@ -249,6 +237,7 @@ with right_col:
             )
         )
 
+        # ---- Betting Line ----
         line = (
             alt.Chart(
                 pd.DataFrame({"line": [betting_line]})
@@ -271,6 +260,7 @@ with right_col:
     else:
         st.info("No games found for this player.")
 
+    # ---- Game Statistics ----
     st.subheader("Game Statistics")
 
     st.dataframe(
@@ -278,9 +268,3 @@ with right_col:
         use_container_width=True,
         hide_index=True
     )
-
-# st.download_button(
-#     "Download latest data (CSV)",
-#     df.to_csv(index=False),
-#     file_name=f"nba_player_boxscores_{stats.SEASON}.csv",
-# )
