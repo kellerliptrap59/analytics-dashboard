@@ -3,8 +3,7 @@ name: Update NBA Data
 
 on:
   schedule:
-  - cron: "0 0 * * *"
-    timezone: "America/New_York"
+    - cron: "0 10 * * *"   # 10:00 UTC, ~5-6 AM Eastern
 
   # Allows you to run it manually from GitHub
   workflow_dispatch:
