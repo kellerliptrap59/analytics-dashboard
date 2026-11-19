@@ -17,16 +17,22 @@ if "data_updated" not in st.session_state:
         try:
             subprocess.run(
                 [sys.executable, "data/stats.py"],
-                check=True
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=120
             )
+            st.toast("NBA data successfully updated!", icon="✅")
 
-            st.session_state.data_updated = True
+        except subprocess.TimeoutExpired:
+            st.warning("The NBA data update timed out. Showing the last saved data.")
 
-        except subprocess.CalledProcessError:
-            st.error("Unable to update NBA data. Please check data/stats.py.")
-            st.stop()
+        except subprocess.CalledProcessError as e:
+            st.warning("Unable to update NBA data. Showing the last saved data.")
+            with st.expander("Error details"):
+                st.code(e.stderr)
 
-    st.toast("NBA data successfully updated!", icon="✅")
+    st.session_state.data_updated = True
 
 # Connect to database
 conn = sqlite3.connect("data/nba.db")
