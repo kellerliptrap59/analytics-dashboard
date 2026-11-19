@@ -3,3 +3,4 @@ pandas
 altair
 nba_api
 pyarrow
+requests
