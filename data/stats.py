@@ -89,6 +89,8 @@ def get_player_game_logs(start_date, end_date):
 
 def clean_data(df):
 
+    print("\nCleaning NBA data...")
+
     missing_columns = [
         column for column in COLUMNS
         if column not in df.columns
@@ -101,13 +103,33 @@ def clean_data(df):
 
     df = df[COLUMNS].copy()
 
+    # Convert dates
     df["GAME_DATE"] = pd.to_datetime(
         df["GAME_DATE"],
         errors="coerce"
     )
 
+    # Keep IDs as strings to preserve leading zeros
+    df["GAME_ID"] = (
+        df["GAME_ID"].astype("string").str.zfill(10)
+    )
+
+    df["PLAYER_ID"] = (
+        df["PLAYER_ID"].astype("string").str.zfill(7)
+    )
+
+    df["TEAM_ID"] = (
+        df["TEAM_ID"].astype("string").str.zfill(10)
+    )
+
+    # Remove invalid records
     df = df.dropna(
-        subset=["GAME_DATE", "PLAYER_ID", "PLAYER_NAME", "GAME_ID"]
+        subset=[
+            "GAME_DATE",
+            "PLAYER_ID",
+            "PLAYER_NAME",
+            "GAME_ID"
+        ]
     )
 
     return df
