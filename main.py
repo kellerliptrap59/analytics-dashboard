@@ -1,5 +1,4 @@
 
-
 import pandas as pd
 import streamlit as st
 import sqlite3
@@ -130,12 +129,16 @@ conn.close()
 total_games = len(results)
 
 if selected_side == "Over":
-    hits = (results[stat] > betting_line).sum()
+    overs = (results[stat] > betting_line).sum()
 else:
-    hits = (results[stat] < betting_line).sum()
+    overs = (results[stat] < betting_line).sum()
 
-hit_rate = (
-    (hits / total_games) * 100
+unders = total_games - overs
+
+result_rate = (
+    (overs / total_games) * 100
+    if selected_side == "Over" and total_games > 0
+    else (unders / total_games) * 100
     if total_games > 0
     else 0
 )
@@ -162,39 +165,30 @@ with right_col:
 
         m1.metric(
             f"{selected_side} Rate",
-            f"{hit_rate:.1f}%"
+            f"{result_rate:.1f}%"
         )
 
         m2.metric(
-            "Record",
-            f"{hits} of {total_games} games"
-        )
-
-        m3.metric(
             f"Average {selected_stat}",
             f"{average:.1f}",
             delta=f"{average - betting_line:+.1f} vs line",
             delta_color="normal" if selected_side == "Over" else "inverse"
         )
 
+        # m2.metric(
+        #     "Record",
+        #     f"{overs} Overs / {unders} Unders"
+        # )
+
         # ---- Chart ----
         chart_df = results.copy()
 
-        if selected_side == "Over":
-            chart_df["Result"] = (
-                chart_df[stat] > betting_line
-            ).map({
-                True: "Hit",
-                False: "Miss"
-            })
-
-        else:
-            chart_df["Result"] = (
-                chart_df[stat] < betting_line
-            ).map({
-                True: "Hit",
-                False: "Miss"
-            })
+        chart_df["Result"] = (
+            chart_df[stat] > betting_line
+        ).map({
+            True: "Over",
+            False: "Under"
+        })
 
         # Oldest to newest, left to right
         chart_df = chart_df.iloc[::-1]
@@ -225,7 +219,7 @@ with right_col:
                 color=alt.Color(
                     "Result:N",
                     scale=alt.Scale(
-                        domain=["Hit", "Miss"],
+                        domain=["Over", "Under"],
                         range=["#2E7D5B", "#C4503C"]
                     ),
                     legend=alt.Legend(
